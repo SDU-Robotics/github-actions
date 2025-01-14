@@ -869,10 +869,10 @@ async function run()
       await handle_github(github, btype, options, true, true);
       const gitlab = yaml.load(core.getInput('gitlab'));
       await handle_gitlab(gitlab, btype, options, true, true);
-      if(ros)
+      /*if(ros)
       {
         await handle_ros_workspace(ros.workspace, ros.install || false, ros['catkin-args'] || '', btype, ros.skiplist, ros.buildlist);
-      }
+      }*/
     }
   }
   catch(error)
