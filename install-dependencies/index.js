@@ -662,8 +662,8 @@ async function run()
             core.endGroup();
           }
       }
-      const vcpkg = (input && input.vcpkg) || vcpkg_global;
-      await handle_vcpkg(vcpkg, '');
+      //const vcpkg = (input && input.vcpkg) || vcpkg_global;
+      //await handle_vcpkg(vcpkg, '');
       const github = yaml.load(core.getInput('github'));
       await handle_github(github, btype, options, false);
       const gitlab = yaml.load(core.getInput('gitlab'));
@@ -732,8 +732,8 @@ async function run()
           core.endGroup();
         }
       }
-      const vcpkg = (input && input.vcpkg) || vcpkg_global;
-      await handle_vcpkg(vcpkg, '');
+      //const vcpkg = (input && input.vcpkg) || vcpkg_global;
+      //await handle_vcpkg(vcpkg, '');
       const github = yaml.load(core.getInput('github'));
       await handle_github(github, btype, options, true);
       const gitlab = yaml.load(core.getInput('gitlab'));
@@ -861,10 +861,10 @@ async function run()
           core.endGroup();
         }
       }
-      const vcpkg = (input && input.vcpkg) || vcpkg_global;
-      await handle_vcpkg(vcpkg, compiler);
-      const ros = (input && input.ros) || ros_global;
-      await handle_ros(ros);
+      //const vcpkg = (input && input.vcpkg) || vcpkg_global;
+      //await handle_vcpkg(vcpkg, compiler);
+      //const ros = (input && input.ros) || ros_global;
+      //await handle_ros(ros);
       const github = yaml.load(core.getInput('github'));
       await handle_github(github, btype, options, true, true);
       const gitlab = yaml.load(core.getInput('gitlab'));
