@@ -220,6 +220,81 @@ async function handle_vcpkg(vcpkg, compiler)
   core.endGroup();
 }
 
+async function build_gitlab_repo(path, ref, btype, options, sudo, build_dir)
+{
+  if(path.startsWith('https://') || path.startsWith('git@'))
+  {
+    url = path;
+    while(url.length > 1 && url[url.length - 1] == '/')
+    {
+      url = url.substr(0, url.length - 1);
+    }
+    path = url.split('/').pop();
+  }
+  else
+  {
+    url = 'https://gitlab.com/' + path;
+  }
+  core.startGroup('Building ' + path);
+  core.startGroup('--> Cloning ' + path);
+  await exec.exec('git clone --recursive ' + url + ' ' + path)
+  const cwd = process.cwd();
+  const project_path = cwd + '/' + path;
+  process.chdir(project_path);
+  if(ref === 'master')
+  {
+    await bash('git checkout master || git checkout main')
+  }
+  else
+  {
+    await exec.exec('git checkout ' + ref)
+  }
+  await exec.exec('git submodule sync')
+  await exec.exec('git submodule update')
+  process.chdir(cwd);
+  // For projects that use cmake_add_fortran_subdirectory we need to hide sh from the PATH
+  const OLD_PATH = process.env.PATH;
+  PATH = OLD_PATH;
+  while(PATH.indexOf('Git') != -1)
+  {
+    PATH = PATH.replace('Git', 'dummy');
+  }
+  // Undo this otherwise gfortran libs are hidden
+  PATH = PATH.replace('C:\\Program Files\\dummy\\mingw64\\bin', 'C:\\Program Files\\Git\\mingw64\\bin');
+  core.exportVariable('PATH', PATH);
+  core.startGroup("Modified PATH variable");
+  console.log(PATH);
+  core.endGroup();
+  await io.mkdirP(build_dir);
+  process.chdir(build_dir);
+  core.endGroup();
+  core.startGroup('--> Configure ' + path);
+  await exec.exec('cmake ' + project_path + ' -DCMAKE_BUILD_TYPE=' + btype + ' ' + options);
+  core.endGroup();
+  core.startGroup('--> Building ' + path);
+  let build_cmd = 'cmake --build . --config ' + btype;
+  if(process.platform === 'win32')
+  {
+    build_cmd = build_cmd + ` -- /p:CL_MPcount=${os.cpus().length}`;
+  }
+  await exec.exec(build_cmd);
+  core.endGroup();
+  core.startGroup('--> Install ' + path);
+  if(sudo)
+  {
+    await exec.exec('sudo cmake --build . --target install --config ' + btype);
+  }
+  else
+  {
+    await exec.exec('cmake --build . --target install --config ' + btype);
+  }
+  core.endGroup();
+  process.chdir(cwd);
+  // Restore PATH setting
+  core.exportVariable('PATH', OLD_PATH);
+  core.endGroup();
+}
+
 async function build_github_repo(path, ref, btype, options, sudo, build_dir)
 {
   if(path.startsWith('https://') || path.startsWith('git@'))
@@ -445,6 +520,43 @@ async function handle_ros_workspace(github, install, catkin_args, btype, skiplis
   core.endGroup();
 }
 
+async function handle_gitlab(gitlab, btype, options, sudo, linux = false)
+{
+  if(!gitlab)
+  {
+    return;
+  }
+  core.startGroup("Install Gitlab dependencies");
+  GIT_DEPENDENCIES = process.env.GIT_DEPENDENCIES ? process.env.GIT_DEPENDENCIES : '';
+  for(let i = 0; i < gitlab.length; ++i)
+  {
+    const entry = gitlab[i];
+    ref = entry.ref ? entry.ref : "master";
+    GIT_DEPENDENCIES += ' ' + entry.path + '#' + ref;
+    let entry_options = options;
+    if(entry.options)
+    {
+      entry_options = entry_options + " " + entry.options;
+    }
+    if(process.platform === 'win32' && entry['windows-options'])
+    {
+      entry_options = entry_options + ' ' + entry['windows-options'];
+    }
+    if(process.platform === 'darwin' && entry['macos-options'])
+    {
+      entry_options = entry_options + ' ' + entry['macos-options'];
+    }
+    if(process.platform === 'linux' && entry['linux-options'])
+    {
+      entry_options = entry_options + ' ' + entry['linux-options'];
+    }
+    build_dir = linux ? '/tmp/_ci/build/' + entry.path : entry.path + '/build';
+    await build_gitlab_repo(entry.path, ref, btype, entry_options, sudo, build_dir);
+  }
+  core.exportVariable('GIT_DEPENDENCIES', GIT_DEPENDENCIES.trim());
+  core.endGroup();
+}
+
 async function handle_github(github, btype, options, sudo, linux = false)
 {
   if(!github)
@@ -543,11 +655,19 @@ async function run()
           await handle_github(input.github, btype, options, false);
           core.endGroup();
         }
+        if(input.gitlab)
+          {
+            core.startGroup("Install Windows specific Gitlab dependencies");
+            await handle_gitlab(input.gitlab, btype, options, false);
+            core.endGroup();
+          }
       }
       const vcpkg = (input && input.vcpkg) || vcpkg_global;
       await handle_vcpkg(vcpkg, '');
       const github = yaml.load(core.getInput('github'));
       await handle_github(github, btype, options, false);
+      const gitlab = yaml.load(core.getInput('gitlab'));
+      await handle_gitlab(gitlab, btype, options, false);
     }
     else if(process.platform === 'darwin')
     {
@@ -616,6 +736,8 @@ async function run()
       await handle_vcpkg(vcpkg, '');
       const github = yaml.load(core.getInput('github'));
       await handle_github(github, btype, options, true);
+      const gitlab = yaml.load(core.getInput('gitlab'));
+      await handle_gitlab(gitlab, btype, options, true);
     }
     else
     {
@@ -745,6 +867,8 @@ async function run()
       await handle_ros(ros);
       const github = yaml.load(core.getInput('github'));
       await handle_github(github, btype, options, true, true);
+      const gitlab = yaml.load(core.getInput('gitlab'));
+      await handle_gitlab(gitlab, btype, options, true, true);
       if(ros)
       {
         await handle_ros_workspace(ros.workspace, ros.install || false, ros['catkin-args'] || '', btype, ros.skiplist, ros.buildlist);
