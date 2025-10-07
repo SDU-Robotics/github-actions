@@ -607,7 +607,8 @@ async function run()
       const input = yaml.load(core.getInput('windows'));
       if(!( (input && input.vcpkg) || vcpkg_global ))
       {
-        await utils.setup_boost();
+        // Don't default install boost
+        //await utils.setup_boost();
       }
       PATH = process.env.PATH;
       if(PATH.indexOf('C:\\ProgramData\\chocolatey\\lib\\mingw\\tools\\install\\mingw64\\bin') == -1)
